@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# .github/workflows/ci.yml
+# This is your GitLab equivalent of a merge request pipeline.
+# Key difference: this file ONLY handles PR validation. Separate concerns into separate files.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]        # Only run when PRing into main
+    paths-ignore:           # Don't waste runner minutes on doc changes
+      - '**.md'
+      - '.gitignore'
+
+# Workflow-level permissions: lock down by default.
+# Jobs that need more will declare it themselves.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    # Pin the OS. "ubuntu-latest" floats and will break you in production.
+    # When GitHub upgrades the label, your implicit dependencies break silently.
+    runs-on: ubuntu-22.04
+
+    strategy:
+      # Matrix builds: GitLab parallel: matrix equivalent.
+      # This runs the job once per Node version — all in parallel.
+      matrix:
+        node-version: [18, 20, 22]
+      
+      # Critical: by default, if one matrix leg fails, GitHub cancels the others.
+      # fail-fast: false lets all legs complete so you see ALL failures at once.
+      fail-fast: false
+
+    # Name the job dynamically using the matrix value.
+    # Shows in the UI as "validate (18)", "validate (20)", etc.
+    name: validate (node ${{ matrix.node-version }})
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # Always pin actions to a full SHA in production, not a tag.
+        # Tags are mutable — v4 today may not be v4 tomorrow.
+        # For this workshop, @v4 is fine. For production: @v4.1.1 or SHA.
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          # This activates built-in npm cache. Equivalent to GitLab's cache: key: $CI_JOB_NAME
+          # but smarter — it hashes your package-lock.json automatically.
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        # npm ci (not npm install) — reproducible installs from lockfile.
+        # In CI always use ci, never install.
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Upload test results
+        # only run this step if a previous step failed — for debugging artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-node${{ matrix.node-version }}
+          path: test-results/
+          # Artifacts expire — set retention explicitly.
+          retention-days: 7

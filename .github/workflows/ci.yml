@@ -71,4 +71,4 @@ jobs:
           name: test-results-node${{ matrix.node-version }}
           path: test-results/
           # Artifacts expire — set retention explicitly.
-          retention-days: 7
+          retention-days: 5
